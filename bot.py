@@ -66,9 +66,17 @@ async def ask_name(message: types.Message):
         await message.answer("Как к вам обращаться?")
 
 @dp.message_handler(lambda message: message.from_user.id in user_data and "name" not in user_data[message.from_user.id])
-async def ask_phone(message: types.Message):
+async def ask_query(message: types.Message):
     user_data[message.from_user.id]["name"] = message.text
-    await message.answer("Напишите ваш номер телефона.")
+    await message.answer("Укажите ваш запрос или ситуацию, с которой вы обращаетесь.")
+
+@dp.message_handler(lambda message: message.from_user.id in user_data and "query" not in user_data[message.from_user.id])
+async def ask_phone(message: types.Message):
+    user_data[message.from_user.id]["query"] = message.text
+    if user_data[message.from_user.id]["contact_method"] == "По телефону":
+        await message.answer("Напишите ваш номер телефона.")
+    else:
+        await confirm_contact(message)
 
 @dp.message_handler(lambda message: message.from_user.id in user_data and "phone" not in user_data[message.from_user.id])
 async def confirm_contact(message: types.Message):
@@ -80,22 +88,30 @@ async def confirm_contact(message: types.Message):
            f"📞 Способ связи: {user_info['contact_method']}\n"
            f"📛 Имя/Компания: {user_info['name']}\n"
            f"📲 Телефон: {user_info['phone']}\n"
+           f"💬 Запрос: {user_info['query']}\n"
            f"🆔 User ID: {message.from_user.id}")
 
     if SUPPORT_GROUP_ID:
         await bot.send_message(SUPPORT_GROUP_ID, msg)
 
-    await message.answer(
-        "С вами свяжутся в ближайшее время. Если не хотите ждать, нажмите 'Позвонить сразу'",
-        reply_markup=confirm_kb
-    )
+    if user_info["contact_method"] == "По телефону":
+        await message.answer(
+            "С вами свяжутся в ближайшее время. Если не хотите ждать, нажмите 'Позвонить сразу'",
+            reply_markup=confirm_kb
+        )
+    else:
+        await message.answer("Ожидайте, с вами свяжется оператор в чате.")
 
 @dp.message_handler(lambda message: message.text in ["Подождать звонка", "Позвонить сразу"])
 async def final_step(message: types.Message):
-    if message.text == "Позвонить сразу":
-        await message.answer("Позвоните нам по номеру: +7 (911) 458-39-39")
+    user_info = user_data.get(message.from_user.id)
+    if user_info and user_info["contact_method"] == "По телефону":
+        if message.text == "Позвонить сразу":
+            await message.answer("Позвоните нам по номеру: +7 (911) 458-39-39")
+        else:
+            await message.answer("Спасибо! Мы с вами свяжемся.")
     else:
-        await message.answer("Спасибо! Мы с вами свяжемся.")
+        await message.answer("Ожидайте, с вами свяжется оператор в чате.")
 
 @dp.message_handler(commands=['reply'])
 async def reply_to_user(message: types.Message):
