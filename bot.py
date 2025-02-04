@@ -93,7 +93,7 @@ async def confirm_contact(message: types.Message):
 @dp.message_handler(lambda message: message.text in ["Подождать звонка", "Позвонить сразу"])
 async def final_step(message: types.Message):
     if message.text == "Позвонить сразу":
-        await message.answer("Позвоните нам по номеру: +7 (XXX) XXX-XX-XX")
+        await message.answer("Позвоните нам по номеру: +7 (911) 458-39-39")
     else:
         await message.answer("Спасибо! Мы с вами свяжемся.")
 
