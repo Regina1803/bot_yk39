@@ -1,5 +1,6 @@
 import os
 import logging
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
@@ -14,6 +15,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 SUPPORT_GROUP_ID = int(os.getenv("SUPPORT_GROUP_ID"))
 
 bot = Bot(token=TOKEN)
+storage = MemoryStorage()
 dp = Dispatcher(bot)
 
 # Логирование
