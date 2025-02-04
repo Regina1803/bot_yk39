@@ -3,6 +3,9 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
+from aiogram.contrib.middlewares.fsm import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.dispatcher import FSMContext
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения
@@ -38,6 +41,11 @@ confirm_kb = ReplyKeyboardMarkup(resize_keyboard=True).add(
 
 # Словарь для хранения данных пользователей
 user_data = {}
+
+# Классы состояний для управления перепиской
+class ConsultationState(StatesGroup):
+    waiting_for_query = State()  # Ожидаем запрос
+    waiting_for_operator_reply = State()  # Ожидаем ответ оператора
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
@@ -101,7 +109,8 @@ async def confirm_contact(message: types.Message):
             reply_markup=confirm_kb
         )
     else:
-        await message.answer("Ожидайте, с вами свяжется оператор в чате.")
+        await message.answer("Ожидайте, с вами свяжется оператор в чате.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Отменить")))
+        await ConsultationState.waiting_for_operator_reply.set()  # Устанавливаем состояние ожидания ответа от оператора
 
 @dp.message_handler(lambda message: message.text in ["Подождать звонка", "Позвонить сразу"])
 async def final_step(message: types.Message):
@@ -114,17 +123,42 @@ async def final_step(message: types.Message):
     else:
         await message.answer("Ожидайте, с вами свяжется оператор в чате.")
 
-@dp.message_handler(commands=['reply'])
-async def reply_to_user(message: types.Message):
+@dp.message_handler(state=ConsultationState.waiting_for_operator_reply)
+async def handle_user_query(message: types.Message, state: FSMContext):
+    user_data[message.from_user.id]["query"] = message.text
+    await state.update_data(query=message.text)
+    
+    # Пересылаем запрос в группу поддержки
+    user_info = user_data[message.from_user.id]
+    msg = (f"💬 Новый запрос в чате!\n\n"
+           f"🏙 Город: {user_info['city']}\n"
+           f"👤 Статус: {user_info['role']}\n"
+           f"📛 Имя/Компания: {user_info['name']}\n"
+           f"💬 Запрос: {user_info['query']}\n"
+           f"🆔 User ID: {message.from_user.id}")
+    
+    if SUPPORT_GROUP_ID:
+        await bot.send_message(SUPPORT_GROUP_ID, msg)
+    
+    await message.answer("Ожидайте, с вами свяжется оператор в чате.")
+    await state.set_state(ConsultationState.waiting_for_operator_reply)
+
+@dp.message_handler(commands=['reply'], state=ConsultationState.waiting_for_operator_reply)
+async def operator_reply(message: types.Message, state: FSMContext):
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
         await message.reply("Используйте формат: /reply user_id текст")
         return
     user_id = args[1]
     response_text = " ".join(args[2:])
+    
     try:
+        # Отправляем ответ пользователю
         await bot.send_message(user_id, f"Ответ от оператора: {response_text}")
+        
+        # Ответ оператора
         await message.answer("Ответ отправлен пользователю.")
+        await state.finish()  # Завершаем диалог
     except Exception as e:
         await message.answer(f"Ошибка при отправке: {e}")
 
