@@ -49,7 +49,7 @@ async def ask_city(message: types.Message):
 
 @dp.message_handler(lambda message: message.text in ["Калининград", "Калининградская область", "Другой город"])
 async def ask_role(message: types.Message):
-    user_data[message.from_user.id] = {"city": message.text}
+    user_data[message.from_user.id] = {"city": message.text, "history": []}
     await message.answer("Кем вы являетесь?", reply_markup=role_kb)
 
 @dp.message_handler(lambda message: message.text in ["Физ лицо", "Юр лицо"])
@@ -82,12 +82,13 @@ async def ask_phone(message: types.Message):
 async def confirm_contact(message: types.Message):
     user_data[message.from_user.id]["phone"] = message.text
     user_info = user_data[message.from_user.id]
+    phone = user_info["phone"] if user_info["contact_method"] == "По телефону" else "—"  # Если контакт через чат, ставим прочерк
     msg = (f"📢 Новый запрос на консультацию!\n\n"
            f"🏙 Город: {user_info['city']}\n"
            f"👤 Статус: {user_info['role']}\n"
            f"📞 Способ связи: {user_info['contact_method']}\n"
            f"📛 Имя/Компания: {user_info['name']}\n"
-           f"📲 Телефон: {user_info['phone']}\n"
+           f"📲 Телефон: {phone}\n"
            f"💬 Запрос: {user_info['query']}\n"
            f"🆔 User ID: {message.from_user.id}")
 
@@ -113,6 +114,26 @@ async def final_step(message: types.Message):
     else:
         await message.answer("Ожидайте, с вами свяжется оператор в чате.")
 
+# Обработка нового сообщения от пользователя (переписка)
+@dp.message_handler(lambda message: message.from_user.id in user_data and "query" in user_data[message.from_user.id] and "phone" in user_data[message.from_user.id])
+async def handle_follow_up(message: types.Message):
+    # Если диалог открыт, мы считаем, что это продолжение общения.
+    user_info = user_data[message.from_user.id]
+
+    # Добавляем сообщение в историю переписки
+    user_data[message.from_user.id]["history"].append(f"Пользователь: {message.text}")
+
+    # Логика, если пользователь продолжает диалог
+    msg = f"📝 Ответ от оператора:\n\n{message.text}"
+
+    # Отправляем ваше сообщение обратно в поддержку
+    if SUPPORT_GROUP_ID:
+        await bot.send_message(SUPPORT_GROUP_ID, msg)
+
+    # Ответ пользователю
+    await message.answer("Ваше сообщение принято. Ожидайте ответа.")
+
+# Обработка ответа на запрос через команду /reply
 @dp.message_handler(commands=['reply'])
 async def reply_to_user(message: types.Message):
     args = message.text.split(maxsplit=2)
