@@ -156,7 +156,7 @@ async def operator_reply(message: types.Message, state: FSMContext):
     
     try:
         # Отправляем ответ пользователю
-        await bot.send_message(user_id, f"Ответ от оператора: {response_text}")
+        await bot.send_message(int(user_id), f"Ответ от оператора: {response_text}")
         
         # Ответ оператора
         await message.answer("Ответ отправлен пользователю.")
