@@ -60,10 +60,7 @@ async def ask_contact_method(message: types.Message):
 @dp.message_handler(lambda message: message.text in ["В чате", "По телефону"])
 async def ask_name(message: types.Message):
     user_data[message.from_user.id]["contact_method"] = message.text
-    if user_data[message.from_user.id]["role"] == "Юр лицо":
-        await message.answer("Напишите название вашей компании.")
-    else:
-        await message.answer("Как к вам обращаться?")
+    await message.answer("Как к вам обращаться?")
 
 @dp.message_handler(lambda message: message.from_user.id in user_data and "name" not in user_data[message.from_user.id])
 async def ask_query(message: types.Message):
@@ -73,80 +70,53 @@ async def ask_query(message: types.Message):
 @dp.message_handler(lambda message: message.from_user.id in user_data and "query" not in user_data[message.from_user.id])
 async def ask_phone(message: types.Message):
     user_data[message.from_user.id]["query"] = message.text
-    if user_data[message.from_user.id]["contact_method"] == "По телефону":
-        await message.answer("Напишите ваш номер телефона.")
-    else:
-        await confirm_contact(message)
+    await message.answer("Напишите ваш номер телефона.")
 
 @dp.message_handler(lambda message: message.from_user.id in user_data and "phone" not in user_data[message.from_user.id])
 async def confirm_contact(message: types.Message):
     user_data[message.from_user.id]["phone"] = message.text
     user_info = user_data[message.from_user.id]
-    phone = user_info["phone"] if user_info["contact_method"] == "По телефону" else "—"  # Если контакт через чат, ставим прочерк
     msg = (f"📢 Новый запрос на консультацию!\n\n"
            f"🏙 Город: {user_info['city']}\n"
            f"👤 Статус: {user_info['role']}\n"
            f"📞 Способ связи: {user_info['contact_method']}\n"
-           f"📛 Имя/Компания: {user_info['name']}\n"
-           f"📲 Телефон: {phone}\n"
+           f"📛 Имя: {user_info['name']}\n"
+           f"📲 Телефон: {user_info['phone']}\n"
            f"💬 Запрос: {user_info['query']}\n"
            f"🆔 User ID: {message.from_user.id}")
-
+    
     if SUPPORT_GROUP_ID:
         await bot.send_message(SUPPORT_GROUP_ID, msg)
+    await message.answer("Ваш запрос передан оператору. Ожидайте ответа.")
 
-    if user_info["contact_method"] == "По телефону":
-        await message.answer(
-            "С вами свяжутся в ближайшее время. Если не хотите ждать, нажмите 'Позвонить сразу'",
-            reply_markup=confirm_kb
-        )
-    else:
-        await message.answer("Ожидайте, с вами свяжется оператор в чате.")
-
-@dp.message_handler(lambda message: message.text in ["Подождать звонка", "Позвонить сразу"])
-async def final_step(message: types.Message):
-    user_info = user_data.get(message.from_user.id)
-    if user_info and user_info["contact_method"] == "По телефону":
-        if message.text == "Позвонить сразу":
-            await message.answer("Позвоните нам по номеру: +7 (911) 458-39-39")
-        else:
-            await message.answer("Спасибо! Мы с вами свяжемся.")
-    else:
-        await message.answer("Ожидайте, с вами свяжется оператор в чате.")
-
-# Обработка нового сообщения от пользователя (переписка)
-@dp.message_handler(lambda message: message.from_user.id in user_data and "query" in user_data[message.from_user.id] and "phone" in user_data[message.from_user.id])
+@dp.message_handler()
 async def handle_follow_up(message: types.Message):
-    # Если диалог открыт, мы считаем, что это продолжение общения.
-    user_info = user_data[message.from_user.id]
+    if message.from_user.id in user_data:
+        user_info = user_data[message.from_user.id]
+        user_data[message.from_user.id]["history"].append(f"Пользователь: {message.text}")
+        
+        if SUPPORT_GROUP_ID:
+            msg_to_support = (f"📩 Новый ответ от пользователя:\n\n"
+                              f"👤 Имя: {user_info['name']}\n"
+                              f"🏙 Город: {user_info['city']}\n"
+                              f"💬 Сообщение: {message.text}\n"
+                              f"🆔 User ID: {message.from_user.id}")
+            await bot.send_message(SUPPORT_GROUP_ID, msg_to_support)
+        
+        await message.answer("Ваше сообщение принято. Ожидайте ответа.")
 
-    # Добавляем сообщение в историю переписки
-    user_data[message.from_user.id]["history"].append(f"Пользователь: {message.text}")
-
-    # Логика, если пользователь продолжает диалог
-    msg = f"📝 Ответ от оператора:\n\n{message.text}"
-
-    # Отправляем ваше сообщение обратно пользователю
-    await bot.send_message(message.from_user.id, msg)
-
-    # Ответ пользователю
-    await message.answer("Ваше сообщение принято. Ожидайте ответа.")
-
-# Обработка ответа на запрос через команду /reply
 @dp.message_handler(commands=['reply'])
 async def reply_to_user(message: types.Message):
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
         await message.reply("Используйте формат: /reply user_id текст")
         return
-    user_id = args[1]
-    response_text = " ".join(args[2:])
+    user_id, response_text = args[1], args[2]
     try:
         await bot.send_message(user_id, f"Ответ от оператора: {response_text}")
         await message.answer("Ответ отправлен пользователю.")
     except Exception as e:
         await message.answer(f"Ошибка при отправке: {e}")
 
-# Запуск бота
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
