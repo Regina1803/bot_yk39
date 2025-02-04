@@ -16,7 +16,7 @@ SUPPORT_GROUP_ID = int(os.getenv("SUPPORT_GROUP_ID"))
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=storage) 
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
