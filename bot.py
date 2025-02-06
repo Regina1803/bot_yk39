@@ -2,9 +2,8 @@ import os
 import logging
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
-from aiogram.contrib.middlewares.fsm import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher import FSMContext
 from dotenv import load_dotenv
@@ -16,7 +15,7 @@ SUPPORT_GROUP_ID = int(os.getenv("SUPPORT_GROUP_ID"))
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage) 
+dp = Dispatcher(bot, storage=storage)
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
@@ -44,14 +43,14 @@ confirm_kb = ReplyKeyboardMarkup(resize_keyboard=True).add(
 # Словарь для хранения данных пользователей
 user_data = {}
 
-# Классы состояний для управления перепиской
+# Классы состояний
 class ConsultationState(StatesGroup):
-    waiting_for_query = State()  # Ожидаем запрос
-    waiting_for_operator_reply = State()  # Ожидаем ответ оператора
+    waiting_for_query = State()  
+    waiting_for_operator_reply = State()  
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer("Добро пожаловать! Я могу помочь вам получить консультацию. Нажмите 'Начать', чтобы продолжить.", reply_markup=start_kb)
+    await message.answer("Добро пожаловать! Нажмите 'Начать', чтобы продолжить.", reply_markup=start_kb)
 
 @dp.message_handler(lambda message: message.text == "Начать")
 async def ask_city(message: types.Message):
@@ -92,7 +91,8 @@ async def ask_phone(message: types.Message):
 async def confirm_contact(message: types.Message):
     user_data[message.from_user.id]["phone"] = message.text
     user_info = user_data[message.from_user.id]
-    phone = user_info["phone"] if user_info["contact_method"] == "По телефону" else "—"  # Если контакт через чат, ставим прочерк
+    phone = user_info["phone"] if user_info["contact_method"] == "По телефону" else "—"
+    
     msg = (f"📢 Новый запрос на консультацию!\n\n"
            f"🏙 Город: {user_info['city']}\n"
            f"👤 Статус: {user_info['role']}\n"
@@ -106,44 +106,27 @@ async def confirm_contact(message: types.Message):
         await bot.send_message(SUPPORT_GROUP_ID, msg)
 
     if user_info["contact_method"] == "По телефону":
-        await message.answer(
-            "С вами свяжутся в ближайшее время. Если не хотите ждать, нажмите 'Позвонить сразу'",
-            reply_markup=confirm_kb
-        )
-    else:
-        await message.answer("Ожидайте, с вами свяжется оператор в чате.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Отменить")))
-        await ConsultationState.waiting_for_operator_reply.set()  # Устанавливаем состояние ожидания ответа от оператора
-
-@dp.message_handler(lambda message: message.text in ["Подождать звонка", "Позвонить сразу"])
-async def final_step(message: types.Message):
-    user_info = user_data.get(message.from_user.id)
-    if user_info and user_info["contact_method"] == "По телефону":
-        if message.text == "Позвонить сразу":
-            await message.answer("Позвоните нам по номеру: +7 (911) 458-39-39")
-        else:
-            await message.answer("Спасибо! Мы с вами свяжемся.")
+        await message.answer("С вами свяжутся в ближайшее время.", reply_markup=confirm_kb)
     else:
         await message.answer("Ожидайте, с вами свяжется оператор в чате.")
+        await ConsultationState.waiting_for_operator_reply.set()
 
 @dp.message_handler(state=ConsultationState.waiting_for_operator_reply)
 async def handle_user_query(message: types.Message, state: FSMContext):
     user_data[message.from_user.id]["query"] = message.text
-    await state.update_data(query=message.text)
-    
-    # Пересылаем запрос в группу поддержки
     user_info = user_data[message.from_user.id]
+
     msg = (f"💬 Новый запрос в чате!\n\n"
            f"🏙 Город: {user_info['city']}\n"
            f"👤 Статус: {user_info['role']}\n"
            f"📛 Имя/Компания: {user_info['name']}\n"
            f"💬 Запрос: {user_info['query']}\n"
            f"🆔 User ID: {message.from_user.id}")
-    
+
     if SUPPORT_GROUP_ID:
         await bot.send_message(SUPPORT_GROUP_ID, msg)
-    
-    await message.answer("Ожидайте, с вами свяжется оператор в чате.")
-    await state.set_state(ConsultationState.waiting_for_operator_reply)
+
+    await message.answer("Ожидайте, оператор скоро ответит.")
 
 @dp.message_handler(commands=['reply'], state=ConsultationState.waiting_for_operator_reply)
 async def operator_reply(message: types.Message, state: FSMContext):
@@ -151,16 +134,14 @@ async def operator_reply(message: types.Message, state: FSMContext):
     if len(args) < 3:
         await message.reply("Используйте формат: /reply user_id текст")
         return
-    user_id = args[1]
-    response_text = " ".join(args[2:])
     
     try:
-        # Отправляем ответ пользователю
-        await bot.send_message(int(user_id), f"Ответ от оператора: {response_text}")
-        
-        # Ответ оператора
+        user_id = int(args[1])
+        response_text = args[2]
+
+        await bot.send_message(user_id, f"Ответ от оператора: {response_text}")
         await message.answer("Ответ отправлен пользователю.")
-        await state.finish()  # Завершаем диалог
+        await state.finish()  # Завершаем состояние
     except Exception as e:
         await message.answer(f"Ошибка при отправке: {e}")
 
