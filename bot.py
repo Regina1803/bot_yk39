@@ -128,9 +128,10 @@ async def handle_user_query(message: types.Message, state: FSMContext):
 
     await message.answer("Ожидайте, оператор скоро ответит.")
 
-@dp.message_handler(commands=['reply'], state=ConsultationState.waiting_for_operator_reply)
-async def operator_reply(message: types.Message, state: FSMContext):
+@dp.message_handler(commands=['reply'])
+async def operator_reply(message: types.Message):
     args = message.text.split(maxsplit=2)
+    
     if len(args) < 3:
         await message.reply("Используйте формат: /reply user_id текст")
         return
@@ -139,11 +140,12 @@ async def operator_reply(message: types.Message, state: FSMContext):
         user_id = int(args[1])
         response_text = args[2]
 
-        await bot.send_message(user_id, f"Ответ от оператора: {response_text}")
-        await message.answer("Ответ отправлен пользователю.")
-        await state.finish()  # Завершаем состояние
+        await bot.send_message(user_id, f"✉️ *Ответ от оператора:*\n\n{response_text}", parse_mode="Markdown")
+        await message.answer("✅ Ответ отправлен пользователю.")
+    except ValueError:
+        await message.answer("❌ Ошибка: Некорректный user_id.")
     except Exception as e:
-        await message.answer(f"Ошибка при отправке: {e}")
+        await message.answer(f"❌ Ошибка при отправке сообщения: {e}")
 
 # Запуск бота
 if __name__ == "__main__":
